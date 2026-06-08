@@ -1,0 +1,9 @@
+# entornos virtuales
+.venv/
+__pycache__/
+
+# bases de datos
+*.db
+
+# variables de entorno
+.env
