@@ -76,3 +76,22 @@ def eliminar_producto(id):
     filas_afectadas = cursor.rowcount
     conn.close()
     return filas_afectadas > 0
+
+# descuenta stock de un producto y devuelve True si habia suficiente, False si no
+def descontar_stock(id, cantidad):
+    conn = get_connection()
+    # primero verifica que haya suficiente stock
+    fila = conn.execute(
+        "SELECT stock FROM productos WHERE id = ?", (id,)
+    ).fetchone()
+    if not fila or fila["stock"] < cantidad:
+        conn.close()
+        return False
+    # si hay suficiente, descuenta
+    conn.execute(
+        "UPDATE productos SET stock = stock - ? WHERE id = ?",
+        (cantidad, id)
+    )
+    conn.commit()
+    conn.close()
+    return True

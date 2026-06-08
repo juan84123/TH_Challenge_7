@@ -75,3 +75,14 @@ def eliminar_producto(id: int, authorization: str = Header(...)):
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     logger.info(f"Producto con id {id} eliminado correctamente")
     return {"mensaje": "Producto eliminado"}
+
+@app.put("/productos/{id}/stock", summary="Descontar stock de un producto")
+def descontar_stock(id: int, cantidad: int, authorization: str = Header(...)):
+    verificar_token(authorization)
+    logger.info(f"Descontando {cantidad} unidades del producto {id}")
+    resultado = database.descontar_stock(id, cantidad)
+    if not resultado:
+        logger.warning(f"Stock insuficiente para producto {id}")
+        raise HTTPException(status_code=400, detail="Stock insuficiente o producto no encontrado")
+    logger.info(f"Stock del producto {id} actualizado correctamente")
+    return {"mensaje": "Stock actualizado"}

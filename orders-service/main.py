@@ -73,12 +73,32 @@ def crear_pedido(pedido: PedidoEntrada, authorization: str = Header(...)):
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
+    # verifica que haya stock suficiente
+    if producto["stock"] < pedido.cantidad:
+        raise HTTPException(status_code=400, detail="Stock insuficiente")
+
     # calcula el total
     total = producto["precio"] * pedido.cantidad
     logger.info(f"Total calculado: {total}")
 
+    # guarda el pedido
     id_nuevo = database.insertar_pedido(pedido.producto_id, pedido.cantidad, total)
     logger.info(f"Pedido creado con id: {id_nuevo}")
+
+    # descuenta el stock en products-service
+    headers = {"Authorization": f"Bearer {PRODUCTS_SERVICE_TOKEN}"}
+    try:
+        response = requests.put(
+            f"{PRODUCTS_SERVICE_URL}/productos/{pedido.producto_id}/stock",
+            params={"cantidad": pedido.cantidad},
+            headers=headers,
+            timeout=5
+        )
+        response.raise_for_status()
+        logger.info(f"Stock descontado correctamente para producto {pedido.producto_id}")
+    except Exception as e:
+        logger.error(f"No se pudo descontar el stock: {e}")
+
     return {"id": id_nuevo, "total": total, "mensaje": "Pedido creado"}
 
 @app.get("/pedidos", summary="Listar todos los pedidos")
@@ -118,3 +138,4 @@ def eliminar_pedido(id: int, authorization: str = Header(...)):
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     logger.info(f"Pedido {id} eliminado correctamente")
     return {"mensaje": "Pedido eliminado"}
+
