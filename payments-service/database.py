@@ -1,55 +1,72 @@
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "payments.db")
+# datos de conexion a PostgreSQL
+DB_HOST     = os.getenv("DB_HOST", "localhost")
+DB_NAME     = os.getenv("DB_NAME", "payments_db")
+DB_USER     = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
 
 # abre una conexion a la base de datos
 def get_connection():
-    conn = sqlite3.connect(DATABASE_URL)
-    conn.row_factory = sqlite3.Row  # devuelve filas como diccionarios
+    conn = psycopg2.connect(
+        host=DB_HOST,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD
+    )
     return conn
 
 # crea la tabla si no existe
 def crear_tabla():
     conn = get_connection()
-    conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS pagos (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            id        SERIAL PRIMARY KEY,
             pedido_id INTEGER NOT NULL,
             total     REAL    NOT NULL,
             estado    TEXT    NOT NULL DEFAULT 'completado'
         )
     """)
     conn.commit()
+    cursor.close()
     conn.close()
 
 # inserta un pago y devuelve su id
 def insertar_pago(pedido_id, total):
     conn = get_connection()
-    cursor = conn.execute(
-        "INSERT INTO pagos (pedido_id, total) VALUES (?, ?)",
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO pagos (pedido_id, total) VALUES (%s, %s) RETURNING id",
         (pedido_id, total)
     )
+    id_nuevo = cursor.fetchone()[0]
     conn.commit()
-    id_nuevo = cursor.lastrowid
+    cursor.close()
     conn.close()
     return id_nuevo
 
 # devuelve todos los pagos
 def obtener_pagos():
     conn = get_connection()
-    filas = conn.execute("SELECT * FROM pagos").fetchall()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM pagos")
+    filas = cursor.fetchall()
+    cursor.close()
     conn.close()
     return [dict(fila) for fila in filas]
 
 # devuelve un pago por id, o None si no existe
 def obtener_pago_por_id(id):
     conn = get_connection()
-    fila = conn.execute(
-        "SELECT * FROM pagos WHERE id = ?", (id,)
-    ).fetchone()
+    cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cursor.execute("SELECT * FROM pagos WHERE id = %s", (id,))
+    fila = cursor.fetchone()
+    cursor.close()
     conn.close()
     return dict(fila) if fila else None
