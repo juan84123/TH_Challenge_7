@@ -21,7 +21,20 @@ app = FastAPI(
 )
 
 # crea la tabla al arrancar el servidor
-database.crear_tabla()
+# espera a que la base de datos este lista antes de arrancar
+import time
+
+for intento in range(10):
+    try:
+        database.crear_tabla()
+        break
+    except Exception as e:
+        logger.warning(f"Base de datos no disponible, reintentando en 2 segundos... (intento {intento + 1})")
+        time.sleep(2)
+else:
+    logger.error("No se pudo conectar a la base de datos despues de 10 intentos")
+    exit(1)
+
 logger.info("Products Service iniciado correctamente")
 
 # modelo de datos para crear o actualizar un producto
