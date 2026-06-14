@@ -93,3 +93,49 @@ Los sistemas monolíticos tuvieron su época. Como los CD-ROM.
 Ahora, el futuro es modular, distribuido, escalable y lleno de pingüinos con laptops.
 
     Dividí el Mamut. Salvá el sistema. Convertite en leyenda.
+
+
+CLIENTE
+  │
+  ├── POST /productos  ──────────────► PRODUCTS SERVICE (puerto 8001)
+  │                                         │
+  │                                         ▼
+  │                                    products-db (PostgreSQL)
+  │
+  ├── POST /pedidos  ───────────────► ORDERS SERVICE (puerto 8002)
+  │                                         │
+  │                                    consulta precio y descuenta stock
+  │                                         │
+  │                                         ▼
+  │                                    PRODUCTS SERVICE
+  │                                         │
+  │                                         ▼
+  │                                    orders-db (PostgreSQL)
+  │
+  └── POST /pagos  ────────────────► PAYMENTS SERVICE (puerto 8003)
+                                           │
+                                      consulta pedido y marca como pagado
+                                           │
+                                           ▼
+                                      ORDERS SERVICE
+                                           │
+                                           ▼
+                                      payments-db (PostgreSQL)
+
+📡 Endpoints
+Products Service — http://host.docker.internal:8001/docs
+
+MétodoEndpointAcciónPOST/productosCrear productoGET/productosListar todosGET/productos/{id}Obtener unoPUT/productos/{id}ActualizarDELETE/productos/{id}Eliminar
+
+Orders Service — http://host.docker.internal:8002/docs
+
+MétodoEndpointAcciónPOST/pedidosCrear pedidoGET/pedidosListar todosGET/pedidos/{id}Obtener unoPUT/pedidos/{id}Actualizar estadoDELETE/pedidos/{id}Eliminar
+
+Payments Service — http://host.docker.internal:8003/docs
+
+MétodoEndpointAcciónPOST/pagosProcesar pagoGET/pagosListar todosGET/pagos/{id}Obtener uno
+
+🛡️ Resiliencia
+Retry — cada servicio reintenta 3 veces antes de rendirse cuando no puede contactar a otro servicio
+Circuit Breaker — después de 3 intentos fallidos devuelve error 503 en vez de colgar
+Logs — cada servicio registra INFO, WARNING y ERROR en cada operación
