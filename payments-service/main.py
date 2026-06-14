@@ -1,15 +1,16 @@
 import logging
 import os
+import time
 import requests
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import database
-from auth import verificar_token
+from auth import verificar_token, security
 
 load_dotenv()
 
-# configuracion de logs
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -20,10 +21,6 @@ app = FastAPI(
     title="Payments Service",
     description="Microservicio de pagos de la tienda pinguina"
 )
-
-# crea la tabla al arrancar el servidor
-# espera a que la base de datos este lista antes de arrancar
-import time
 
 for intento in range(10):
     try:
@@ -41,15 +38,12 @@ logger.info("Payments Service iniciado correctamente")
 ORDERS_SERVICE_URL = os.getenv("ORDERS_SERVICE_URL")
 ORDERS_SERVICE_TOKEN = os.getenv("ORDERS_SERVICE_TOKEN")
 
-# modelo de datos para procesar un pago
 class PagoEntrada(BaseModel):
     pedido_id: int
 
-# consulta el pedido al orders service con retry
 def obtener_pedido(pedido_id):
     headers = {"Authorization": f"Bearer {ORDERS_SERVICE_TOKEN}"}
     intentos = 3
-
     for intento in range(intentos):
         try:
             logger.info(f"Consultando pedido {pedido_id} al Orders Service (intento {intento + 1})")
@@ -66,16 +60,12 @@ def obtener_pedido(pedido_id):
             logger.warning(f"Orders Service no disponible (intento {intento + 1} de {intentos})")
         except requests.exceptions.Timeout:
             logger.warning(f"Orders Service no respondio a tiempo (intento {intento + 1} de {intentos})")
-
-    # si llega aca, todos los intentos fallaron
     logger.error("Orders Service no disponible despues de 3 intentos")
     raise HTTPException(status_code=503, detail="Orders Service no disponible")
 
-# actualiza el estado del pedido a pagado con retry
 def marcar_pedido_pagado(pedido_id):
     headers = {"Authorization": f"Bearer {ORDERS_SERVICE_TOKEN}"}
     intentos = 3
-
     for intento in range(intentos):
         try:
             logger.info(f"Actualizando estado del pedido {pedido_id} a pagado (intento {intento + 1})")
@@ -91,43 +81,33 @@ def marcar_pedido_pagado(pedido_id):
             logger.warning(f"Orders Service no disponible (intento {intento + 1} de {intentos})")
         except requests.exceptions.Timeout:
             logger.warning(f"Orders Service no respondio a tiempo (intento {intento + 1} de {intentos})")
-
     logger.error("No se pudo actualizar el estado del pedido despues de 3 intentos")
     raise HTTPException(status_code=503, detail="Orders Service no disponible")
 
 @app.post("/pagos", status_code=201, summary="Procesar un pago")
-def procesar_pago(pago: PagoEntrada, authorization: str = Header(...)):
-    verificar_token(authorization)
+def procesar_pago(pago: PagoEntrada, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Procesando pago para pedido_id: {pago.pedido_id}")
-
-    # consulta el pedido al orders service
     pedido = obtener_pedido(pago.pedido_id)
     if not pedido:
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
-
-    # verifica que el pedido no este ya pagado
     if pedido["estado"] == "pagado":
         raise HTTPException(status_code=400, detail="El pedido ya fue pagado")
-
-    # guarda el pago en la base de datos
     id_nuevo = database.insertar_pago(pago.pedido_id, pedido["total"])
     logger.info(f"Pago registrado con id: {id_nuevo}")
-
-    # actualiza el estado del pedido a pagado
     marcar_pedido_pagado(pago.pedido_id)
     logger.info(f"Pedido {pago.pedido_id} marcado como pagado")
-
     return {"id": id_nuevo, "pedido_id": pago.pedido_id, "total": pedido["total"], "mensaje": "Pago procesado"}
 
 @app.get("/pagos", summary="Listar todos los pagos")
-def listar_pagos(authorization: str = Header(...)):
-    verificar_token(authorization)
+def listar_pagos(credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info("Listando todos los pagos")
     return database.obtener_pagos()
 
 @app.get("/pagos/{id}", summary="Obtener un pago por id")
-def obtener_pago(id: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def obtener_pago(id: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Buscando pago con id: {id}")
     pago = database.obtener_pago_por_id(id)
     if not pago:

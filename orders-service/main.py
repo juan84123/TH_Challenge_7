@@ -1,15 +1,16 @@
 import logging
 import os
+import time
 import requests
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import database
-from auth import verificar_token
+from auth import verificar_token, security
 
 load_dotenv()
 
-# configuracion de logs
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -20,10 +21,6 @@ app = FastAPI(
     title="Orders Service",
     description="Microservicio de pedidos de la tienda pinguina"
 )
-
-# crea la tabla al arrancar el servidor
-# espera a que la base de datos este lista antes de arrancar
-import time
 
 for intento in range(10):
     try:
@@ -41,20 +38,16 @@ logger.info("Orders Service iniciado correctamente")
 PRODUCTS_SERVICE_URL = os.getenv("PRODUCTS_SERVICE_URL")
 PRODUCTS_SERVICE_TOKEN = os.getenv("PRODUCTS_SERVICE_TOKEN")
 
-# modelo de datos para crear un pedido
 class PedidoEntrada(BaseModel):
     producto_id: int
     cantidad: int
 
-# modelo de datos para actualizar el estado
 class EstadoEntrada(BaseModel):
     estado: str
 
-# funcion que consulta el precio al products service con retry
 def obtener_producto(producto_id):
     headers = {"Authorization": f"Bearer {PRODUCTS_SERVICE_TOKEN}"}
     intentos = 3
-
     for intento in range(intentos):
         try:
             logger.info(f"Consultando producto {producto_id} al Products Service (intento {intento + 1})")
@@ -71,34 +64,22 @@ def obtener_producto(producto_id):
             logger.warning(f"Products Service no disponible (intento {intento + 1} de {intentos})")
         except requests.exceptions.Timeout:
             logger.warning(f"Products Service no respondio a tiempo (intento {intento + 1} de {intentos})")
-
-    # si llega aca, todos los intentos fallaron
     logger.error("Products Service no disponible despues de 3 intentos")
     raise HTTPException(status_code=503, detail="Products Service no disponible")
 
 @app.post("/pedidos", status_code=201, summary="Crear un pedido")
-def crear_pedido(pedido: PedidoEntrada, authorization: str = Header(...)):
-    verificar_token(authorization)
+def crear_pedido(pedido: PedidoEntrada, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Creando pedido para producto_id: {pedido.producto_id}")
-
-    # consulta el producto al products service
     producto = obtener_producto(pedido.producto_id)
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-
-    # verifica que haya stock suficiente
     if producto["stock"] < pedido.cantidad:
         raise HTTPException(status_code=400, detail="Stock insuficiente")
-
-    # calcula el total
     total = producto["precio"] * pedido.cantidad
     logger.info(f"Total calculado: {total}")
-
-    # guarda el pedido
     id_nuevo = database.insertar_pedido(pedido.producto_id, pedido.cantidad, total)
     logger.info(f"Pedido creado con id: {id_nuevo}")
-
-    # descuenta el stock en products-service
     headers = {"Authorization": f"Bearer {PRODUCTS_SERVICE_TOKEN}"}
     try:
         response = requests.put(
@@ -111,18 +92,17 @@ def crear_pedido(pedido: PedidoEntrada, authorization: str = Header(...)):
         logger.info(f"Stock descontado correctamente para producto {pedido.producto_id}")
     except Exception as e:
         logger.error(f"No se pudo descontar el stock: {e}")
-
     return {"id": id_nuevo, "total": total, "mensaje": "Pedido creado"}
 
 @app.get("/pedidos", summary="Listar todos los pedidos")
-def listar_pedidos(authorization: str = Header(...)):
-    verificar_token(authorization)
+def listar_pedidos(credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info("Listando todos los pedidos")
     return database.obtener_pedidos()
 
 @app.get("/pedidos/{id}", summary="Obtener un pedido por id")
-def obtener_pedido(id: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def obtener_pedido(id: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Buscando pedido con id: {id}")
     pedido = database.obtener_pedido_por_id(id)
     if not pedido:
@@ -131,8 +111,8 @@ def obtener_pedido(id: int, authorization: str = Header(...)):
     return pedido
 
 @app.put("/pedidos/{id}", summary="Actualizar estado de un pedido")
-def actualizar_pedido(id: int, estado: EstadoEntrada, authorization: str = Header(...)):
-    verificar_token(authorization)
+def actualizar_pedido(id: int, estado: EstadoEntrada, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Actualizando estado del pedido {id} a: {estado.estado}")
     actualizado = database.actualizar_estado(id, estado.estado)
     if not actualizado:
@@ -142,8 +122,8 @@ def actualizar_pedido(id: int, estado: EstadoEntrada, authorization: str = Heade
     return {"mensaje": "Pedido actualizado"}
 
 @app.delete("/pedidos/{id}", summary="Eliminar un pedido")
-def eliminar_pedido(id: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def eliminar_pedido(id: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Eliminando pedido con id: {id}")
     eliminado = database.eliminar_pedido(id)
     if not eliminado:
@@ -151,4 +131,3 @@ def eliminar_pedido(id: int, authorization: str = Header(...)):
         raise HTTPException(status_code=404, detail="Pedido no encontrado")
     logger.info(f"Pedido {id} eliminado correctamente")
     return {"mensaje": "Pedido eliminado"}
-
