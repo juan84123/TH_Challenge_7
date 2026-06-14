@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "5432:5432"
+    volumes:
+      - products_data:/var/lib/postgresql/data
 
   products-service:
     build: ./products-service
@@ -28,6 +30,8 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "5433:5432"
+    volumes:
+      - orders_data:/var/lib/postgresql/data
 
   orders-service:
     build: ./orders-service
@@ -48,6 +52,8 @@ services:
       POSTGRES_PASSWORD: postgres
     ports:
       - "5434:5432"
+    volumes:
+      - payments_data:/var/lib/postgresql/data
 
   payments-service:
     build: ./payments-service
@@ -58,3 +64,9 @@ services:
     depends_on:
       - payments-db
       - orders-service
+
+# define los volumenes
+volumes:
+  products_data:
+  orders_data:
+  payments_data:

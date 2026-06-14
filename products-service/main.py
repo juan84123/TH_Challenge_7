@@ -1,14 +1,15 @@
 import logging
 import os
-from fastapi import FastAPI, HTTPException, Header
+import time
+from fastapi import FastAPI, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import database
-from auth import verificar_token
+from auth import verificar_token, security
 
 load_dotenv()
 
-# configuracion de logs
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
@@ -19,10 +20,6 @@ app = FastAPI(
     title="Products Service",
     description="Microservicio de productos de la tienda pinguina"
 )
-
-# crea la tabla al arrancar el servidor
-# espera a que la base de datos este lista antes de arrancar
-import time
 
 for intento in range(10):
     try:
@@ -37,29 +34,28 @@ else:
 
 logger.info("Products Service iniciado correctamente")
 
-# modelo de datos para crear o actualizar un producto
 class ProductoEntrada(BaseModel):
     nombre: str
     precio: float
     stock: int
 
 @app.post("/productos", status_code=201, summary="Crear un producto")
-def crear_producto(producto: ProductoEntrada, authorization: str = Header(...)):
-    verificar_token(authorization)
+def crear_producto(producto: ProductoEntrada, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Creando producto: {producto.nombre}")
     id_nuevo = database.insertar_producto(producto.nombre, producto.precio, producto.stock)
     logger.info(f"Producto creado con id: {id_nuevo}")
     return {"id": id_nuevo, "mensaje": "Producto creado"}
 
 @app.get("/productos", summary="Listar todos los productos")
-def listar_productos(authorization: str = Header(...)):
-    verificar_token(authorization)
+def listar_productos(credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info("Listando todos los productos")
     return database.obtener_productos()
 
 @app.get("/productos/{id}", summary="Obtener un producto por id")
-def obtener_producto(id: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def obtener_producto(id: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Buscando producto con id: {id}")
     producto = database.obtener_producto_por_id(id)
     if not producto:
@@ -68,8 +64,8 @@ def obtener_producto(id: int, authorization: str = Header(...)):
     return producto
 
 @app.put("/productos/{id}", summary="Actualizar un producto")
-def actualizar_producto(id: int, producto: ProductoEntrada, authorization: str = Header(...)):
-    verificar_token(authorization)
+def actualizar_producto(id: int, producto: ProductoEntrada, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Actualizando producto con id: {id}")
     actualizado = database.actualizar_producto(id, producto.nombre, producto.precio, producto.stock)
     if not actualizado:
@@ -79,8 +75,8 @@ def actualizar_producto(id: int, producto: ProductoEntrada, authorization: str =
     return {"mensaje": "Producto actualizado"}
 
 @app.delete("/productos/{id}", summary="Eliminar un producto")
-def eliminar_producto(id: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def eliminar_producto(id: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Eliminando producto con id: {id}")
     eliminado = database.eliminar_producto(id)
     if not eliminado:
@@ -90,8 +86,8 @@ def eliminar_producto(id: int, authorization: str = Header(...)):
     return {"mensaje": "Producto eliminado"}
 
 @app.put("/productos/{id}/stock", summary="Descontar stock de un producto")
-def descontar_stock(id: int, cantidad: int, authorization: str = Header(...)):
-    verificar_token(authorization)
+def descontar_stock(id: int, cantidad: int, credentials: HTTPAuthorizationCredentials = Security(security)):
+    verificar_token(credentials)
     logger.info(f"Descontando {cantidad} unidades del producto {id}")
     resultado = database.descontar_stock(id, cantidad)
     if not resultado:
